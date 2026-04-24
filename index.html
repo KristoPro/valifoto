@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="et">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="VäliFoto">
+<title>VäliFoto</title>
+
+<!-- MSAL kirjuta oma versioon, see on avalik CDN -->
+<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Barlow+Condensed:wght@300;500;700;900&display=swap');
+
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #242836;
+    --accent: #f5a623;
+    --accent2: #e05c2a;
+    --text: #e8eaf0;
+    --muted: #6b7280;
+    --green: #34d399;
+    --red: #f87171;
+    --border: rgba(255,255,255,0.08);
+    --radius: 14px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Barlow Condensed', sans-serif;
+    min-height: 100vh;
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    overflow-x: hidden;
+  }
+
+  /* ─── HEADER ─── */
+  header {
+    padding: 16px 20px 12px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .logo {
+    font-size: 28px;
+    font-weight: 900;
+    letter-spacing: -0.5px;
+    color: var(--text);
+  }
+  .logo span { color: var(--accent); }
+  .user-info {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    text-align: right;
+    line-height: 1.4;
+  }
+  .user-info strong { color: var(--accent); display: block; font-size: 12px; }
+
+  /* ─── MAIN CONTENT ─── */
+  main { flex: 1; padding: 20px; max-width: 480px; margin: 0 auto; width: 100%; }
+
+  /* ─── LOGIN SCREEN ─── */
+  #login-screen {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 70vh;
+    gap: 24px;
+    text-align: center;
+  }
+  .login-icon {
+    width: 80px; height: 80px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 36px;
+  }
+  .login-title { font-size: 36px; font-weight: 700; line-height: 1.1; }
+  .login-sub { font-size: 16px; color: var(--muted); font-weight: 300; }
+
+  /* ─── BUTTONS ─── */
+  .btn {
+    width: 100%;
+    padding: 16px 24px;
+    border: none;
+    border-radius: var(--radius);
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+  }
+  .btn:active { transform: scale(0.97); }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    color: #fff;
+  }
+  .btn-secondary {
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .btn-green { background: var(--green); color: #0f1117; }
+  .btn-danger { background: var(--red); color: #fff; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+  /* ─── SECTION LABEL ─── */
+  .section-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 2px;
+    color: var(--accent);
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+
+  /* ─── CATEGORY PICKER ─── */
+  .category-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+  .cat-btn {
+    padding: 18px 12px;
+    background: var(--surface);
+    border: 2px solid var(--border);
+    border-radius: var(--radius);
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.15s;
+    font-family: 'Barlow Condensed', sans-serif;
+  }
+  .cat-btn:active { transform: scale(0.96); }
+  .cat-btn .cat-icon { font-size: 30px; display: block; margin-bottom: 8px; }
+  .cat-btn .cat-name { font-size: 18px; font-weight: 700; color: var(--text); display: block; }
+  .cat-btn.active {
+    border-color: var(--accent);
+    background: rgba(245,166,35,0.12);
+  }
+  .cat-btn.active .cat-name { color: var(--accent); }
+
+  /* ─── INPUT ─── */
+  .field { margin-bottom: 16px; }
+  .field input, .field select {
+    width: 100%;
+    padding: 14px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 18px;
+    font-weight: 500;
+    outline: none;
+    transition: border-color 0.15s;
+    -webkit-appearance: none;
+  }
+  .field input:focus, .field select:focus { border-color: var(--accent); }
+  .field input::placeholder { color: var(--muted); }
+
+  /* ─── CAMERA AREA ─── */
+  #camera-area {
+    margin-bottom: 20px;
+  }
+  #preview-container {
+    width: 100%;
+    aspect-ratio: 4/3;
+    background: var(--surface);
+    border-radius: var(--radius);
+    overflow: hidden;
+    position: relative;
+    border: 1px solid var(--border);
+    margin-bottom: 10px;
+  }
+  #video-el {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  #canvas-el { display: none; }
+  #photo-preview {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    display: none;
+  }
+  .cam-overlay {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    padding: 12px;
+    background: linear-gradient(transparent, rgba(0,0,0,0.7));
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: rgba(255,255,255,0.7);
+    line-height: 1.5;
+  }
+
+  /* ─── STATUS BAR ─── */
+  #status-bar {
+    padding: 12px 16px;
+    border-radius: var(--radius);
+    margin-bottom: 16px;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    display: none;
+  }
+  #status-bar.info { background: rgba(245,166,35,0.12); border: 1px solid rgba(245,166,35,0.3); color: var(--accent); }
+  #status-bar.success { background: rgba(52,211,153,0.12); border: 1px solid rgba(52,211,153,0.3); color: var(--green); }
+  #status-bar.error { background: rgba(248,113,113,0.12); border: 1px solid rgba(248,113,113,0.3); color: var(--red); }
+
+  /* ─── GPS BADGE ─── */
+  .gps-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: var(--surface2);
+    border-radius: 30px;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 20px;
+  }
+  .gps-badge.ok { color: var(--green); }
+  .gps-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--muted);
+    animation: pulse 2s infinite;
+  }
+  .gps-badge.ok .gps-dot { background: var(--green); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  /* ─── ACTION ROW ─── */
+  .action-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  /* ─── HISTORY ─── */
+  #history-section { margin-top: 28px; }
+  .history-item {
+    background: var(--surface);
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border: 1px solid var(--border);
+  }
+  .history-thumb {
+    width: 44px; height: 44px;
+    border-radius: 8px;
+    object-fit: cover;
+    flex-shrink: 0;
+    background: var(--surface2);
+  }
+  .history-info { flex: 1; min-width: 0; }
+  .history-name {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .history-meta {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+  .history-status { font-size: 18px; }
+
+  /* ─── DIVIDER ─── */
+  .divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 24px 0;
+  }
+
+  /* ─── SPINNER ─── */
+  .spinner {
+    display: inline-block;
+    width: 18px; height: 18px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ─── CONFIG NOTICE ─── */
+  .config-notice {
+    background: rgba(248,113,113,0.1);
+    border: 1px solid rgba(248,113,113,0.3);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    margin-bottom: 20px;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--red);
+    line-height: 1.7;
+  }
+  .config-notice strong { font-size: 13px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Väli<span>Foto</span></div>
+  <div class="user-info" id="user-display">
+    <span>Pole sisse logitud</span>
+  </div>
+</header>
+
+<main>
+
+  <!-- ═══ LOGIN SCREEN ═══ -->
+  <div id="login-screen">
+    <div class="login-icon">📷</div>
+    <div>
+      <div class="login-title">VäliFoto</div>
+      <div class="login-sub">Välitöö fotodokumentatsioon</div>
+    </div>
+    <div style="width:100%">
+      <button class="btn btn-primary" onclick="loginUser()">
+        <span>🔐</span> Logi sisse Microsoft 365
+      </button>
+    </div>
+    <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);text-align:center;line-height:1.8">
+      Fotod salvestatakse automaatselt<br>firma OneDrive'i / SharePointi
+    </div>
+  </div>
+
+  <!-- ═══ MAIN APP ═══ -->
+  <div id="app-screen" style="display:none">
+
+    <!-- Config notice - kuva ainult kui clientId pole seadistatud -->
+    <div class="config-notice" id="config-notice" style="display:none">
+      <strong>⚙️ Seadistamine vajalik</strong><br>
+      Muuda faili alguses olevaid konstante:<br>
+      CLIENT_ID → Azure App Registration client ID<br>
+      TENANT_ID → sinu organisatsiooni tenant ID<br>
+      SHAREPOINT_SITE → SharePointi saidi URL
+    </div>
+
+    <!-- GPS olek -->
+    <div class="gps-badge" id="gps-badge">
+      <div class="gps-dot"></div>
+      <span id="gps-text">GPS otsib asukohta...</span>
+    </div>
+
+    <!-- Kategooria -->
+    <div class="section-label">Kategooria</div>
+    <div class="category-grid">
+      <div class="cat-btn" onclick="selectCategory('Objektid','🏗️',this)">
+        <span class="cat-icon">🏗️</span>
+        <span class="cat-name">Objektid</span>
+      </div>
+      <div class="cat-btn" onclick="selectCategory('Tehtud tööd','🔧',this)">
+        <span class="cat-icon">🔧</span>
+        <span class="cat-name">Tehtud tööd</span>
+      </div>
+      <div class="cat-btn" onclick="selectCategory('Autod','🚗',this)">
+        <span class="cat-icon">🚗</span>
+        <span class="cat-name">Autod</span>
+      </div>
+      <div class="cat-btn" onclick="selectCategory('Muu','📁',this)">
+        <span class="cat-icon">📁</span>
+        <span class="cat-name">Muu</span>
+      </div>
+    </div>
+
+    <!-- Kaust / pealkiri -->
+    <div class="field">
+      <div class="section-label">Kaust / pealkiri</div>
+      <input type="text" id="folder-name" placeholder="nt Tallinn Pärnu mnt 12 või BMW 123ABC" autocomplete="off">
+    </div>
+
+    <!-- Kaamera -->
+    <div class="section-label">Foto</div>
+    <div id="camera-area">
+      <div id="preview-container">
+        <video id="video-el" autoplay playsinline muted></video>
+        <canvas id="canvas-el"></canvas>
+        <img id="photo-preview" alt="Eelvaade">
+        <div class="cam-overlay" id="cam-overlay">
+          <span id="overlay-datetime"></span><br>
+          <span id="overlay-gps">📍 GPS...</span>
+        </div>
+      </div>
+
+      <div class="action-row" id="capture-row">
+        <button class="btn btn-secondary" onclick="startCamera()">📷 Ava kaamera</button>
+        <button class="btn btn-primary" id="snap-btn" onclick="snapPhoto()" disabled>⚡ Pildista</button>
+      </div>
+
+      <div class="action-row" id="retake-row" style="display:none">
+        <button class="btn btn-secondary" onclick="retakePhoto()">↩ Uuesti</button>
+        <button class="btn btn-green" id="upload-btn" onclick="uploadPhoto()">☁ Laadi üles</button>
+      </div>
+    </div>
+
+    <!-- Olek -->
+    <div id="status-bar"></div>
+
+    <!-- Ajalugu -->
+    <div id="history-section">
+      <hr class="divider">
+      <div class="section-label">Viimased fotod</div>
+      <div id="history-list">
+        <div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);padding:12px 0">
+          Ühtegi fotot veel üles laetud
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</main>
+
+<script>
+// ════════════════════════════════════════════
+//  ⚙️  SEADISTUS — muuda need oma väärtusteks
+// ════════════════════════════════════════════
+const CLIENT_ID   = '52e2eb6c-d070-4b9f-b3e3-77dd6e9b3cd4';       // Azure App Registration → Application (client) ID
+const TENANT_ID   = 'ad5c035c-e29d-4906-8026-0e3fb2f1e172';       // Azure → Directory (tenant) ID
+const DRIVE_PATH  = 'me/drive';                   // 'me/drive' = isiklik OneDrive
+                                                   // SharePointi jaoks: 'sites/{site-id}/drive'
+const BASE_FOLDER = 'VäliFoto';                   // Juurkaust OneDrive'is
+// ════════════════════════════════════════════
+
+const SCOPES = ['User.Read', 'Files.ReadWrite'];
+
+// ─── MSAL ───
+const msalConfig = {
+  auth: {
+    clientId: CLIENT_ID,
+    authority: `https://login.microsoftonline.com/${TENANT_ID}`,
+    redirectUri: window.location.href.split('?')[0]
+  },
+  cache: { cacheLocation: 'localStorage', storeAuthStateInCookie: true }
+};
+
+let msalInstance, currentAccount, accessToken;
+let gpsCoords = null;
+let capturedBlob = null;
+let selectedCategory = null;
+let stream = null;
+let uploadHistory = [];
+
+// ─── INIT ───
+window.onload = async () => {
+  // Näita config hoiatust kui pole seadistatud
+  if (CLIENT_ID === 'SINU-CLIENT-ID-SIIA') {
+    document.getElementById('config-notice').style.display = 'block';
+    // Demo mode - logi "sisse" ilma päris authita
+    showDemoMode();
+    return;
+  }
+
+  try {
+    msalInstance = new msal.PublicClientApplication(msalConfig);
+    await msalInstance.initialize();
+    const response = await msalInstance.handleRedirectPromise();
+    if (response) {
+      currentAccount = response.account;
+      accessToken = response.accessToken;
+      showApp();
+    } else {
+      const accounts = msalInstance.getAllAccounts();
+      if (accounts.length > 0) {
+        currentAccount = accounts[0];
+        await refreshToken();
+        showApp();
+      }
+    }
+  } catch(e) {
+    console.error(e);
+  }
+};
+
+function showDemoMode() {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app-screen').style.display = 'block';
+  document.getElementById('config-notice').style.display = 'block';
+  document.getElementById('user-display').innerHTML = '<strong>Demo režiim</strong><span>Seadista CLIENT_ID</span>';
+  startGPS();
+  startOverlayClock();
+}
+
+async function loginUser() {
+  if (CLIENT_ID === 'SINU-CLIENT-ID-SIIA') {
+    showDemoMode();
+    return;
+  }
+  try {
+    msalInstance = new msal.PublicClientApplication(msalConfig);
+    await msalInstance.initialize();
+    await msalInstance.loginRedirect({ scopes: SCOPES });
+  } catch(e) {
+    showStatus('Sisselogimine ebaõnnestus: ' + e.message, 'error');
+  }
+}
+
+async function refreshToken() {
+  const req = { account: currentAccount, scopes: SCOPES };
+  try {
+    const r = await msalInstance.acquireTokenSilent(req);
+    accessToken = r.accessToken;
+  } catch {
+    await msalInstance.acquireTokenRedirect(req);
+  }
+}
+
+function showApp() {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app-screen').style.display = 'block';
+  document.getElementById('user-display').innerHTML =
+    `<strong>${currentAccount.name?.split(' ')[0] || 'Kasutaja'}</strong><span>${currentAccount.username}</span>`;
+  startGPS();
+  startOverlayClock();
+}
+
+// ─── GPS ───
+function startGPS() {
+  if (!navigator.geolocation) return;
+  navigator.geolocation.watchPosition(pos => {
+    gpsCoords = { lat: pos.coords.latitude.toFixed(5), lng: pos.coords.longitude.toFixed(5), acc: Math.round(pos.coords.accuracy) };
+    const badge = document.getElementById('gps-badge');
+    badge.classList.add('ok');
+    document.getElementById('gps-text').textContent = `${gpsCoords.lat}, ${gpsCoords.lng} (±${gpsCoords.acc}m)`;
+    document.getElementById('overlay-gps').textContent = `📍 ${gpsCoords.lat}, ${gpsCoords.lng}`;
+  }, () => {
+    document.getElementById('gps-text').textContent = 'GPS pole saadaval';
+  }, { enableHighAccuracy: true, maximumAge: 10000 });
+}
+
+// ─── CLOCK ───
+function startOverlayClock() {
+  setInterval(() => {
+    const now = new Date();
+    document.getElementById('overlay-datetime').textContent = formatDateTime(now);
+  }, 1000);
+}
+
+function formatDateTime(d) {
+  return d.toLocaleDateString('et-EE') + ' ' + d.toLocaleTimeString('et-EE', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+
+// ─── CATEGORY ───
+function selectCategory(name, icon, el) {
+  document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  selectedCategory = { name, icon };
+}
+
+// ─── CAMERA ───
+async function startCamera() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
+      audio: false
+    });
+    const video = document.getElementById('video-el');
+    video.srcObject = stream;
+    video.style.display = 'block';
+    document.getElementById('photo-preview').style.display = 'none';
+    document.getElementById('snap-btn').disabled = false;
+    document.getElementById('capture-row').style.display = 'grid';
+    document.getElementById('retake-row').style.display = 'none';
+  } catch(e) {
+    showStatus('Kaamera ei avane: ' + e.message, 'error');
+  }
+}
+
+function snapPhoto() {
+  const video = document.getElementById('video-el');
+  const canvas = document.getElementById('canvas-el');
+  canvas.width = video.videoWidth || 1280;
+  canvas.height = video.videoHeight || 720;
+  const ctx = canvas.getContext('2d');
+
+  // Joonista video kaadri
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  // Vesimärk
+  addWatermark(ctx, canvas.width, canvas.height);
+
+  // Kuva eelvaade
+  canvas.toBlob(blob => {
+    capturedBlob = blob;
+    const url = URL.createObjectURL(blob);
+    const preview = document.getElementById('photo-preview');
+    preview.src = url;
+    preview.style.display = 'block';
+    video.style.display = 'none';
+
+    // Peata kaamera
+    if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+
+    document.getElementById('capture-row').style.display = 'none';
+    document.getElementById('retake-row').style.display = 'grid';
+  }, 'image/jpeg', 0.92);
+}
+
+function addWatermark(ctx, w, h) {
+  const now = new Date();
+  const dateStr = formatDateTime(now);
+  const gpsStr = gpsCoords ? `${gpsCoords.lat}, ${gpsCoords.lng}` : 'GPS puudub';
+  const catStr = selectedCategory ? `${selectedCategory.icon} ${selectedCategory.name}` : '';
+  const folderStr = document.getElementById('folder-name').value.trim();
+
+  const pad = 18;
+  const lineH = h * 0.032;
+  const fontSize = Math.max(14, lineH);
+
+  ctx.save();
+  // Taust vesimärgile
+  const lines = [dateStr, `📍 ${gpsStr}`, catStr + (folderStr ? ` · ${folderStr}` : '')].filter(Boolean);
+  const boxH = (lines.length * (fontSize + 4)) + 20;
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(0, h - boxH, w, boxH);
+
+  // Tekst
+  ctx.fillStyle = '#ffffff';
+  ctx.font = `bold ${fontSize}px "Courier New", monospace`;
+  ctx.shadowColor = 'rgba(0,0,0,0.8)';
+  ctx.shadowBlur = 4;
+  lines.forEach((line, i) => {
+    ctx.fillText(line, pad, h - boxH + 16 + i * (fontSize + 4) + fontSize * 0.85);
+  });
+  ctx.restore();
+}
+
+function retakePhoto() {
+  capturedBlob = null;
+  document.getElementById('photo-preview').style.display = 'none';
+  document.getElementById('capture-row').style.display = 'grid';
+  document.getElementById('retake-row').style.display = 'none';
+  document.getElementById('snap-btn').disabled = true;
+  document.getElementById('video-el').style.display = 'block';
+  startCamera();
+}
+
+// ─── UPLOAD ───
+async function uploadPhoto() {
+  if (!capturedBlob) { showStatus('Pildista kõigepealt!', 'error'); return; }
+  if (!selectedCategory) { showStatus('Vali kategooria!', 'error'); return; }
+  const folderName = document.getElementById('folder-name').value.trim();
+  if (!folderName) { showStatus('Sisesta kaustanimi!', 'error'); return; }
+
+  // Demo mode - fake upload
+  if (!accessToken) {
+    showStatus('Demo režiim: päris üleslaadimiseks seadista CLIENT_ID ja logi sisse', 'error');
+    addToHistory(folderName, '❌ Demo');
+    return;
+  }
+
+  const btn = document.getElementById('upload-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Laadin...';
+
+  try {
+    await refreshToken();
+
+    const now = new Date();
+    const ts = now.toISOString().slice(0,19).replace(/:/g,'-');
+    const fileName = `${ts}_${folderName.replace(/[^a-zA-Z0-9äöüõÄÖÜÕ _-]/g,'_')}.jpg`;
+
+    // Kaustatee: VäliFoto / Kategooria / Kaustanimi
+    const folderPath = `${BASE_FOLDER}/${selectedCategory.name}/${folderName}`;
+
+    // 1. Loo kaustad
+    showStatus('Loon kaustu...', 'info');
+    await ensureFolder(BASE_FOLDER);
+    await ensureFolder(`${BASE_FOLDER}/${selectedCategory.name}`);
+    await ensureFolder(folderPath);
+
+    // 2. Laadi fail üles
+    showStatus('Laadin fotot üles...', 'info');
+    const uploadUrl = `https://graph.microsoft.com/v1.0/${DRIVE_PATH}/root:/${folderPath}/${fileName}:/content`;
+    const uploadRes = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'image/jpeg'
+      },
+      body: capturedBlob
+    });
+
+    if (!uploadRes.ok) throw new Error(`Upload failed: ${uploadRes.status}`);
+    const fileData = await uploadRes.json();
+
+    showStatus(`✅ Salvestatud: ${folderPath}/${fileName}`, 'success');
+    addToHistory(folderName, '✅');
+
+    // Reset
+    setTimeout(() => {
+      capturedBlob = null;
+      document.getElementById('photo-preview').style.display = 'none';
+      document.getElementById('video-el').style.display = 'block';
+      document.getElementById('capture-row').style.display = 'grid';
+      document.getElementById('retake-row').style.display = 'none';
+      document.getElementById('snap-btn').disabled = true;
+    }, 1500);
+
+  } catch(e) {
+    showStatus('Viga: ' + e.message, 'error');
+    addToHistory(folderName, '❌');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '☁ Laadi üles';
+  }
+}
+
+async function ensureFolder(path) {
+  const parts = path.split('/');
+  const name = parts.pop();
+  const parentPath = parts.join('/');
+  const url = parentPath
+    ? `https://graph.microsoft.com/v1.0/${DRIVE_PATH}/root:/${parentPath}:/children`
+    : `https://graph.microsoft.com/v1.0/${DRIVE_PATH}/root/children`;
+
+  await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      name,
+      folder: {},
+      '@microsoft.graph.conflictBehavior': 'rename'
+    })
+  });
+}
+
+// ─── HISTORY ───
+function addToHistory(name, status) {
+  const preview = document.getElementById('photo-preview').src;
+  uploadHistory.unshift({ name, status, cat: selectedCategory?.name, time: new Date(), thumb: preview });
+  if (uploadHistory.length > 10) uploadHistory.pop();
+  renderHistory();
+}
+
+function renderHistory() {
+  const list = document.getElementById('history-list');
+  if (!uploadHistory.length) { list.innerHTML = '<div style="font-family:\'DM Mono\',monospace;font-size:11px;color:var(--muted);padding:12px 0">Ühtegi fotot veel üles laetud</div>'; return; }
+  list.innerHTML = uploadHistory.map(h => `
+    <div class="history-item">
+      <img class="history-thumb" src="${h.thumb || ''}" onerror="this.style.background='var(--surface2)'">
+      <div class="history-info">
+        <div class="history-name">${h.name}</div>
+        <div class="history-meta">${h.cat || '—'} · ${h.time.toLocaleTimeString('et-EE',{hour:'2-digit',minute:'2-digit'})}</div>
+      </div>
+      <span class="history-status">${h.status}</span>
+    </div>
+  `).join('');
+}
+
+// ─── STATUS ───
+function showStatus(msg, type) {
+  const bar = document.getElementById('status-bar');
+  bar.textContent = msg;
+  bar.className = type;
+  bar.style.display = 'block';
+  if (type === 'success') setTimeout(() => { bar.style.display = 'none'; }, 4000);
+}
+</script>
+
+</body>
+</html>
