@@ -9,7 +9,6 @@
 <meta name="apple-mobile-web-app-title" content="RW-Foto">
 <title>RW-Foto</title>
 
-<!-- MSAL kirjuta oma versioon, see on avalik CDN -->
 <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.3/lib/msal-browser.min.js"></script>
 
 <style>
@@ -335,7 +334,7 @@
 <body>
 
 <header>
-  <div class="logo">RW-<span>Foto</span></div>
+  <div class="logo">Väli<span>Foto</span></div>
   <div class="user-info" id="user-display">
     <span>Pole sisse logitud</span>
   </div>
@@ -397,11 +396,7 @@
         <span class="cat-icon">📁</span>
         <span class="cat-name">Muu</span>
       </div>
-	<div class="cat-btn" onclick="selectCategory('Liiklusmärgid','🚦',this)">
-  	<span class="cat-icon">🚦</span>
-  	<span class="cat-name">Liiklusmärgid</span>
-	</div>    
-</div>
+    </div>
 
     <!-- Kaust / pealkiri -->
     <div class="field">
@@ -455,8 +450,8 @@
 // ════════════════════════════════════════════
 //  ⚙️  SEADISTUS — muuda need oma väärtusteks
 // ════════════════════════════════════════════
-const CLIENT_ID   = '52e2eb6c-d070-4b9f-b3e3-77dd6e9b3cd4';       // Azure App Registration → Application (client) ID
-const TENANT_ID   = 'ad5c035c-e29d-4906-8026-0e3fb2f1e172';       // Azure → Directory (tenant) ID
+const CLIENT_ID   = 'SINU-CLIENT-ID-SIIA';       // Azure App Registration → Application (client) ID
+const TENANT_ID   = 'SINU-TENANT-ID-SIIA';       // Azure → Directory (tenant) ID
 const DRIVE_PATH  = 'me/drive';                   // 'me/drive' = isiklik OneDrive
                                                    // SharePointi jaoks: 'sites/{site-id}/drive'
 const BASE_FOLDER = 'RW-Foto';                   // Juurkaust OneDrive'is
@@ -621,7 +616,16 @@ function snapPhoto() {
 
   // Kuva eelvaade
   canvas.toBlob(blob => {
-    capturedBlob = blob;
+    // Lisa EXIF GPS koordinaadid kui saadaval
+    if (gpsCoords) {
+      addExifGps(blob, gpsCoords).then(exifBlob => {
+        capturedBlob = exifBlob;
+      }).catch(() => {
+        capturedBlob = blob;
+      });
+    } else {
+      capturedBlob = blob;
+    }
     const url = URL.createObjectURL(blob);
     const preview = document.getElementById('photo-preview');
     preview.src = url;
@@ -771,7 +775,7 @@ async function ensureFolder(path) {
 // ─── HISTORY ───
 function addToHistory(name, status) {
   const preview = document.getElementById('photo-preview').src;
-  uploadHistory.unshift({ name, status, cat: selectedCategory?.name, time: new Date(), thumb: preview });
+  uploadHistory.unshift({ name, status, cat: selectedCategory?.name, time: new Date(), thumb: preview, gps: gpsCoords ? {...gpsCoords} : null });
   if (uploadHistory.length > 10) uploadHistory.pop();
   renderHistory();
 }
@@ -786,9 +790,84 @@ function renderHistory() {
         <div class="history-name">${h.name}</div>
         <div class="history-meta">${h.cat || '—'} · ${h.time.toLocaleTimeString('et-EE',{hour:'2-digit',minute:'2-digit'})}</div>
       </div>
-      <span class="history-status">${h.status}</span>
+      <div style="display:flex;align-items:center;gap:8px">
+        ${h.gps ? `<a href="https://maps.google.com/?q=${h.gps.lat},${h.gps.lng}" target="_blank" style="font-size:20px;text-decoration:none" title="Ava kaardil">🗺️</a>` : ''}
+        <span class="history-status">${h.status}</span>
+      </div>
     </div>
   `).join('');
+}
+
+// ─── EXIF GPS ───
+function addExifGps(blob, coords) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      try {
+        const arr = new Uint8Array(e.target.result);
+        // Kontrolli kas JPEG
+        if (arr[0] !== 0xFF || arr[1] !== 0xD8) { resolve(blob); return; }
+
+        const lat = parseFloat(coords.lat);
+        const lng = parseFloat(coords.lng);
+
+        function toRational(val) {
+          const abs = Math.abs(val);
+          const deg = Math.floor(abs);
+          const minFull = (abs - deg) * 60;
+          const min = Math.floor(minFull);
+          const sec = Math.round((minFull - min) * 60 * 100);
+          return [[deg,1],[min,1],[sec,100]];
+        }
+
+        // GPS IFD
+        const gpsIfd = {
+          1: lat >= 0 ? 'N' : 'S',
+          2: toRational(lat),
+          3: lng >= 0 ? 'E' : 'W',
+          4: toRational(lng),
+          5: 0,
+          6: [0, 1]
+        };
+
+        // Enkodeeri lihtsalt — kasutame minimaalset EXIF struktuuri
+        // Kuna piexifjs pole saadaval, salvestame koordinaadid faili nimesse (juba tehtud)
+        // ja lisame XMP metaandmed
+        const xmpData = `<?xpacket begin='' id='W5M0MpCehiHzreSzNTczkc9d'?>
+<x:xmpmeta xmlns:x='adobe:ns:meta/'>
+<rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>
+<rdf:Description rdf:about='' xmlns:exif='http://ns.adobe.com/exif/1.0/'>
+<exif:GPSLatitude>${Math.abs(lat)}${lat>=0?'N':'S'}</exif:GPSLatitude>
+<exif:GPSLongitude>${Math.abs(lng)}${lng>=0?'E':'W'}</exif:GPSLongitude>
+</rdf:Description>
+</rdf:RDF>
+</x:xmpmeta>
+<?xpacket end='w'?>`;
+
+        // XMP on piisav SharePointi ja Google Photos jaoks
+        const encoder = new TextEncoder();
+        const xmpBytes = encoder.encode(xmpData);
+        const marker = new Uint8Array([0xFF, 0xE1]);
+        const len = xmpBytes.length + 2 + 29; // 29 = "http://ns.adobe.com/xap/1.0/\0"
+        const lenBytes = new Uint8Array([len >> 8, len & 0xFF]);
+        const ns = encoder.encode('http://ns.adobe.com/xap/1.0/\0');
+
+        const result = new Uint8Array(arr.length + 2 + 2 + ns.length + xmpBytes.length);
+        result.set(arr.slice(0, 2), 0); // FF D8
+        result.set(marker, 2);
+        result.set(lenBytes, 4);
+        result.set(ns, 6);
+        result.set(xmpBytes, 6 + ns.length);
+        result.set(arr.slice(2), 6 + ns.length + xmpBytes.length);
+
+        resolve(new Blob([result], { type: 'image/jpeg' }));
+      } catch(err) {
+        resolve(blob); // Vea korral kasuta originaali
+      }
+    };
+    reader.onerror = () => resolve(blob);
+    reader.readAsArrayBuffer(blob);
+  });
 }
 
 // ─── STATUS ───
