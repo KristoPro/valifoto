@@ -6,8 +6,8 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="VäliFoto">
-<title>VäliFoto</title>
+<meta name="apple-mobile-web-app-title" content="RW-Foto">
+<title>RW-Foto</title>
 
 <!-- MSAL kirjuta oma versioon, see on avalik CDN -->
 <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.3/lib/msal-browser.min.js"></script>
@@ -347,7 +347,7 @@
   <div id="login-screen">
     <div class="login-icon">📷</div>
     <div>
-      <div class="login-title">VäliFoto</div>
+      <div class="login-title">RW-Foto</div>
       <div class="login-sub">Välitöö fotodokumentatsioon</div>
     </div>
     <div style="width:100%">
@@ -696,7 +696,7 @@ async function uploadPhoto() {
     const ts = now.toISOString().slice(0,19).replace(/:/g,'-');
     const fileName = `${ts}_${folderName.replace(/[^a-zA-Z0-9äöüõÄÖÜÕ _-]/g,'_')}.jpg`;
 
-    // Kaustatee: VäliFoto / Kategooria / Kaustanimi
+    // Kaustatee: RW-Foto / Kategooria / Kaustanimi
     const folderPath = `${BASE_FOLDER}/${selectedCategory.name}/${folderName}`;
 
     // 1. Loo kaustad
