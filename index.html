@@ -759,7 +759,7 @@ async function ensureFolder(path) {
     body: JSON.stringify({
       name,
       folder: {},
-      '@microsoft.graph.conflictBehavior': 'rename'
+      '@microsoft.graph.conflictBehavior': 'fail'
     })
   });
 }
