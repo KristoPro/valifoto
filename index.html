@@ -347,13 +347,28 @@
 
 <!-- ═══ KAARDI MODAL ═══ -->
 <div id="map-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:var(--bg);z-index:200;flex-direction:column">
-  <div style="padding:16px 20px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+  <div style="padding:12px 16px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
     <div style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:700">📍 Fotode kaart</div>
     <button onclick="closeMap()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 14px;color:var(--text);font-size:16px;cursor:pointer">✕ Sulge</button>
   </div>
+  <!-- Filtrid -->
+  <div style="padding:10px 16px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap">
+    <select id="filter-cat" onchange="applyMapFilter()" style="flex:1;min-width:120px;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Barlow Condensed',sans-serif;font-size:16px;outline:none">
+      <option value="">Kõik kategooriad</option>
+      <option>Objektid</option>
+      <option>Tehtud tööd</option>
+      <option>Autod</option>
+      <option>Liiklusmärgid</option>
+      <option>Muu</option>
+    </select>
+    <select id="filter-kaust" onchange="applyMapFilter()" style="flex:1;min-width:120px;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Barlow Condensed',sans-serif;font-size:16px;outline:none">
+      <option value="">Kõik kaustad</option>
+    </select>
+    <div id="map-count" style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);display:flex;align-items:center;white-space:nowrap"></div>
+  </div>
   <div id="map-container" style="flex:1;position:relative">
     <div id="leaflet-map" style="width:100%;height:100%"></div>
-    <div id="map-loading" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-family:'DM Mono',monospace;font-size:12px;color:var(--muted)">Laen fotosid...</div>
+    <div id="map-loading" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-family:'DM Mono',monospace;font-size:12px;color:var(--muted);text-align:center">Laen fotosid...</div>
   </div>
 </div>
 
@@ -1016,64 +1031,101 @@ async function savePhotoLocation(fileName, kaust, kategooria, coords) {
 
 // ─── KAART ───
 let leafletMap = null;
+let allFotod = [];
 
 async function openMap() {
   const modal = document.getElementById('map-modal');
   modal.style.display = 'flex';
   document.getElementById('map-loading').style.display = 'block';
+  document.getElementById('map-loading').textContent = 'Laen fotosid...';
 
-  // Init kaart
   setTimeout(async () => {
     if (!leafletMap) {
-      leafletMap = L.map('leaflet-map').setView([58.8, 25.5], 7); // Eesti keskpunkt
+      leafletMap = L.map('leaflet-map').setView([58.8, 25.5], 7);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap'
       }).addTo(leafletMap);
     }
 
-    // Laadi fotod SharePointist
     try {
       await refreshToken();
       const url = `https://graph.microsoft.com/v1.0/sites/${SITE_ID}/lists/RW-Fotod/items?$expand=fields&$top=500`;
       const res = await fetch(url, { headers: { 'Authorization': `Bearer ${accessToken}` } });
       const data = await res.json();
+      allFotod = data.value.filter(i => i.fields.Lat && i.fields.Lng);
 
-      // Eemalda vanad markerid
-      leafletMap.eachLayer(l => { if (l instanceof L.Marker) leafletMap.removeLayer(l); });
+      // Täida kaustad filter
+      const kaustad = [...new Set(allFotod.map(i => i.fields.Kaust).filter(Boolean))].sort();
+      const kaustalSelect = document.getElementById('filter-kaust');
+      kaustalSelect.innerHTML = '<option value="">Kõik kaustad</option>' +
+        kaustad.map(k => `<option>${k}</option>`).join('');
 
-      const fotod = data.value.filter(i => i.fields.Lat && i.fields.Lng);
       document.getElementById('map-loading').style.display = 'none';
-
-      if (!fotod.length) {
-        document.getElementById('map-loading').textContent = 'Pole veel ühtegi fotot asukohaga';
-        document.getElementById('map-loading').style.display = 'block';
-        return;
-      }
-
-      const bounds = [];
-      fotod.forEach(i => {
-        const f = i.fields;
-        const lat = parseFloat(f.Lat);
-        const lng = parseFloat(f.Lng);
-        bounds.push([lat, lng]);
-
-        const marker = L.marker([lat, lng]).addTo(leafletMap);
-        marker.bindPopup(`
-          <div style="font-family:sans-serif;min-width:160px">
-            <strong>${f.Kaust || '—'}</strong><br>
-            <span style="color:#888;font-size:12px">${f.Kategooria || '—'}</span><br>
-            <span style="font-size:11px;color:#aaa">${f.Title || ''}</span><br>
-            <a href="https://maps.google.com/?q=${lat},${lng}" target="_blank" style="font-size:12px">📍 Google Maps</a>
-          </div>
-        `);
-      });
-
-      if (bounds.length) leafletMap.fitBounds(bounds, { padding: [30, 30] });
+      renderMapMarkers(allFotod);
 
     } catch(e) {
       document.getElementById('map-loading').textContent = 'Viga: ' + e.message;
     }
   }, 100);
+}
+
+function applyMapFilter() {
+  const cat = document.getElementById('filter-cat').value;
+  const kaust = document.getElementById('filter-kaust').value;
+
+  let filtered = allFotod;
+  if (cat) filtered = filtered.filter(i => i.fields.Kategooria === cat);
+  if (kaust) filtered = filtered.filter(i => i.fields.Kaust === kaust);
+
+  // Kui kategooria muutub, uuenda kaustad filter
+  if (cat && !kaust) {
+    const kaustad = [...new Set(filtered.map(i => i.fields.Kaust).filter(Boolean))].sort();
+    const kaustalSelect = document.getElementById('filter-kaust');
+    const currentKaust = kaustalSelect.value;
+    kaustalSelect.innerHTML = '<option value="">Kõik kaustad</option>' +
+      kaustad.map(k => `<option ${k === currentKaust ? 'selected' : ''}>${k}</option>`).join('');
+  } else if (!cat) {
+    const kaustad = [...new Set(allFotod.map(i => i.fields.Kaust).filter(Boolean))].sort();
+    const kaustalSelect = document.getElementById('filter-kaust');
+    kaustalSelect.innerHTML = '<option value="">Kõik kaustad</option>' +
+      kaustad.map(k => `<option>${k}</option>`).join('');
+  }
+
+  renderMapMarkers(filtered);
+}
+
+function renderMapMarkers(fotod) {
+  // Eemalda vanad markerid
+  leafletMap.eachLayer(l => { if (l instanceof L.Marker) leafletMap.removeLayer(l); });
+
+  document.getElementById('map-count').textContent = `${fotod.length} fotot`;
+
+  if (!fotod.length) {
+    document.getElementById('map-loading').textContent = 'Pole ühtegi fotot valitud filtriga';
+    document.getElementById('map-loading').style.display = 'block';
+    return;
+  }
+  document.getElementById('map-loading').style.display = 'none';
+
+  const bounds = [];
+  fotod.forEach(i => {
+    const f = i.fields;
+    const lat = parseFloat(f.Lat);
+    const lng = parseFloat(f.Lng);
+    bounds.push([lat, lng]);
+
+    const marker = L.marker([lat, lng]).addTo(leafletMap);
+    marker.bindPopup(`
+      <div style="font-family:sans-serif;min-width:160px">
+        <strong>${f.Kaust || '—'}</strong><br>
+        <span style="color:#888;font-size:12px">${f.Kategooria || '—'}</span><br>
+        <span style="font-size:11px;color:#aaa">${(f.Title || '').slice(0,30)}</span><br>
+        <a href="https://maps.google.com/?q=${lat},${lng}" target="_blank" style="font-size:12px">📍 Google Maps</a>
+      </div>
+    `);
+  });
+
+  if (bounds.length) leafletMap.fitBounds(bounds, { padding: [30, 30] });
 }
 
 function closeMap() {
