@@ -402,6 +402,21 @@
 	</div>
     </div>
 
+    <!-- Autode nimekiri (kuvatakse ainult kui Autod valitud) -->
+    <div id="auto-picker" style="display:none;margin-bottom:16px">
+      <div class="section-label">Vali auto</div>
+      <div id="auto-list" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+        <div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);grid-column:1/-1;padding:8px 0">Laen nimekirja...</div>
+      </div>
+      <button class="btn btn-secondary" onclick="showAddAuto()" style="font-size:16px;padding:12px">+ Lisa uus auto</button>
+      <div id="add-auto-form" style="display:none;margin-top:10px">
+        <div style="display:grid;grid-template-columns:1fr auto;gap:8px">
+          <input type="text" id="new-auto-input" placeholder="Reg number nt 123ABC" style="padding:12px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:'Barlow Condensed',sans-serif;font-size:17px;outline:none" autocomplete="off">
+          <button class="btn btn-green" onclick="addNewAuto()" style="width:auto;padding:12px 16px;font-size:16px">Salvesta</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Kaust / pealkiri -->
     <div class="field">
       <div class="section-label">Kaust / pealkiri</div>
@@ -459,6 +474,8 @@ const TENANT_ID   = 'ad5c035c-e29d-4906-8026-0e3fb2f1e172';       // Azure → D
 const DRIVE_PATH  = 'sites/roadwolf.sharepoint.com,47998887-54a7-4220-98bf-23b9abce9458,174b11f8-853f-4f06-833e-b23cb92535ac/drive';                   // 'me/drive' = isiklik OneDrive
                                                    // SharePointi jaoks: 'sites/{site-id}/drive'
 const BASE_FOLDER = 'RW-Foto';                   // Juurkaust OneDrive'is
+const SITE_ID     = 'roadwolf.sharepoint.com,47998887-54a7-4220-98bf-23b9abce9458,174b11f8-853f-4f06-833e-b23cb92535ac';
+const AUTO_LIST   = 'RW-Autod';
 // ════════════════════════════════════════════
 
 const SCOPES = ['User.Read', 'Files.ReadWrite', 'Sites.ReadWrite.All'];
@@ -584,6 +601,14 @@ function selectCategory(name, icon, el) {
   document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
   el.classList.add('active');
   selectedCategory = { name, icon };
+  const autoPicker = document.getElementById('auto-picker');
+  if (name === 'Autod') {
+    autoPicker.style.display = 'block';
+    document.getElementById('folder-name').value = '';
+    loadAutoList();
+  } else {
+    autoPicker.style.display = 'none';
+  }
 }
 
 // ─── CAMERA ───
@@ -800,6 +825,78 @@ function renderHistory() {
       </div>
     </div>
   `).join('');
+}
+
+// ─── AUTODE NIMEKIRI ───
+async function loadAutoList() {
+  const list = document.getElementById('auto-list');
+  list.innerHTML = '<div style="font-family:\'DM Mono\',monospace;font-size:11px;color:var(--muted);grid-column:1/-1;padding:8px 0">Laen nimekirja...</div>';
+  try {
+    await refreshToken();
+    const url = `https://graph.microsoft.com/v1.0/sites/${SITE_ID}/lists/${AUTO_LIST}/items?$expand=fields($select=Title)&$top=200`;
+    const res = await fetch(url, { headers: { 'Authorization': `Bearer ${accessToken}` } });
+    if (!res.ok) throw new Error('Nimekiri ei laadnud');
+    const data = await res.json();
+    const autod = data.value.map(i => ({ id: i.id, reg: i.fields.Title })).sort((a,b) => a.reg.localeCompare(b.reg));
+    renderAutoList(autod);
+  } catch(e) {
+    list.innerHTML = `<div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--red);grid-column:1/-1">Viga: ${e.message}</div>`;
+  }
+}
+
+function renderAutoList(autod) {
+  const list = document.getElementById('auto-list');
+  if (!autod.length) {
+    list.innerHTML = '<div style="font-family:\'DM Mono\',monospace;font-size:11px;color:var(--muted);grid-column:1/-1">Nimekiri tühi</div>';
+    return;
+  }
+  list.innerHTML = autod.map(a => `
+    <div onclick="selectAuto('${a.reg}')" id="auto-${a.reg}" style="
+      padding:12px;background:var(--surface);border:2px solid var(--border);
+      border-radius:10px;cursor:pointer;text-align:center;
+      font-family:'DM Mono',monospace;font-size:13px;font-weight:500;
+      color:var(--text);transition:all 0.15s;
+    ">🚗 ${a.reg}</div>
+  `).join('');
+}
+
+function selectAuto(reg) {
+  document.getElementById('folder-name').value = reg;
+  document.querySelectorAll('#auto-list div').forEach(d => {
+    const isSelected = d.textContent.includes(reg);
+    d.style.borderColor = isSelected ? 'var(--accent)' : 'var(--border)';
+    d.style.background = isSelected ? 'rgba(245,166,35,0.12)' : 'var(--surface)';
+    d.style.color = isSelected ? 'var(--accent)' : 'var(--text)';
+  });
+}
+
+function showAddAuto() {
+  const form = document.getElementById('add-auto-form');
+  form.style.display = form.style.display === 'none' ? 'block' : 'none';
+  if (form.style.display === 'block') document.getElementById('new-auto-input').focus();
+}
+
+async function addNewAuto() {
+  const input = document.getElementById('new-auto-input');
+  const reg = input.value.trim().toUpperCase();
+  if (!reg) return;
+  try {
+    await refreshToken();
+    const url = `https://graph.microsoft.com/v1.0/sites/${SITE_ID}/lists/${AUTO_LIST}/items`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields: { Title: reg } })
+    });
+    if (!res.ok) throw new Error('Lisamine ebaõnnestus');
+    input.value = '';
+    document.getElementById('add-auto-form').style.display = 'none';
+    await loadAutoList();
+    selectAuto(reg);
+    showStatus(`✅ Auto ${reg} lisatud`, 'success');
+  } catch(e) {
+    showStatus('Viga: ' + e.message, 'error');
+  }
 }
 
 // ─── EXIF GPS ───
