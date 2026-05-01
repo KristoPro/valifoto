@@ -456,12 +456,12 @@
 // ════════════════════════════════════════════
 const CLIENT_ID   = '52e2eb6c-d070-4b9f-b3e3-77dd6e9b3cd4';       // Azure App Registration → Application (client) ID
 const TENANT_ID   = 'ad5c035c-e29d-4906-8026-0e3fb2f1e172';       // Azure → Directory (tenant) ID
-const DRIVE_PATH  = 'me/drive';                   // 'me/drive' = isiklik OneDrive
+const DRIVE_PATH  = 'sites/roadwolf.sharepoint.com,47998887-54a7-4220-98bf-23b9abce9458,174b11f8-853f-4f06-833e-b23cb92535ac/drive';                   // 'me/drive' = isiklik OneDrive
                                                    // SharePointi jaoks: 'sites/{site-id}/drive'
 const BASE_FOLDER = 'RW-Foto';                   // Juurkaust OneDrive'is
 // ════════════════════════════════════════════
 
-const SCOPES = ['User.Read', 'Files.ReadWrite'];
+const SCOPES = ['User.Read', 'Files.ReadWrite', 'Sites.ReadWrite.All'];
 
 // ─── MSAL ───
 const msalConfig = {
