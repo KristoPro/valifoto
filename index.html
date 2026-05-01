@@ -10,6 +10,8 @@
 <title>RW-Foto</title>
 
 <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.3/lib/msal-browser.min.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <style>
   @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Barlow+Condensed:wght@300;500;700;900&display=swap');
@@ -335,10 +337,25 @@
 
 <header>
   <div class="logo">RW-<span>Foto</span></div>
-  <div class="user-info" id="user-display">
-    <span>Pole sisse logitud</span>
+  <div style="display:flex;align-items:center;gap:10px">
+    <button onclick="openMap()" style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:8px 12px;color:var(--text);font-size:18px;cursor:pointer" title="Kaart">🗺️</button>
+    <div class="user-info" id="user-display">
+      <span>Pole sisse logitud</span>
+    </div>
   </div>
 </header>
+
+<!-- ═══ KAARDI MODAL ═══ -->
+<div id="map-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:var(--bg);z-index:200;flex-direction:column">
+  <div style="padding:16px 20px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+    <div style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:700">📍 Fotode kaart</div>
+    <button onclick="closeMap()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 14px;color:var(--text);font-size:16px;cursor:pointer">✕ Sulge</button>
+  </div>
+  <div id="map-container" style="flex:1;position:relative">
+    <div id="leaflet-map" style="width:100%;height:100%"></div>
+    <div id="map-loading" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-family:'DM Mono',monospace;font-size:12px;color:var(--muted)">Laen fotosid...</div>
+  </div>
+</div>
 
 <main>
 
@@ -760,6 +777,11 @@ async function uploadPhoto() {
     showStatus(`✅ Salvestatud: ${folderPath}/${fileName}`, 'success');
     addToHistory(folderName, '✅');
 
+    // Salvesta asukoht SharePointi listi
+    if (gpsCoords) {
+      savePhotoLocation(fileName, folderName, selectedCategory.name, gpsCoords);
+    }
+
     // Reset
     setTimeout(() => {
       capturedBlob = null;
@@ -969,6 +991,94 @@ function addExifGps(blob, coords) {
     reader.onerror = () => resolve(blob);
     reader.readAsArrayBuffer(blob);
   });
+}
+
+// ─── SALVESTA ASUKOHT ───
+async function savePhotoLocation(fileName, kaust, kategooria, coords) {
+  try {
+    const url = `https://graph.microsoft.com/v1.0/sites/${SITE_ID}/lists/RW-Fotod/items`;
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields: {
+        Title: fileName,
+        Kategooria: kategooria,
+        Kaust: kaust,
+        Lat: parseFloat(coords.lat),
+        Lng: parseFloat(coords.lng),
+        Failinimi: fileName
+      }})
+    });
+  } catch(e) {
+    console.warn('Asukoha salvestamine ebaõnnestus:', e);
+  }
+}
+
+// ─── KAART ───
+let leafletMap = null;
+
+async function openMap() {
+  const modal = document.getElementById('map-modal');
+  modal.style.display = 'flex';
+  document.getElementById('map-loading').style.display = 'block';
+
+  // Init kaart
+  setTimeout(async () => {
+    if (!leafletMap) {
+      leafletMap = L.map('leaflet-map').setView([58.8, 25.5], 7); // Eesti keskpunkt
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap'
+      }).addTo(leafletMap);
+    }
+
+    // Laadi fotod SharePointist
+    try {
+      await refreshToken();
+      const url = `https://graph.microsoft.com/v1.0/sites/${SITE_ID}/lists/RW-Fotod/items?$expand=fields&$top=500`;
+      const res = await fetch(url, { headers: { 'Authorization': `Bearer ${accessToken}` } });
+      const data = await res.json();
+
+      // Eemalda vanad markerid
+      leafletMap.eachLayer(l => { if (l instanceof L.Marker) leafletMap.removeLayer(l); });
+
+      const fotod = data.value.filter(i => i.fields.Lat && i.fields.Lng);
+      document.getElementById('map-loading').style.display = 'none';
+
+      if (!fotod.length) {
+        document.getElementById('map-loading').textContent = 'Pole veel ühtegi fotot asukohaga';
+        document.getElementById('map-loading').style.display = 'block';
+        return;
+      }
+
+      const bounds = [];
+      fotod.forEach(i => {
+        const f = i.fields;
+        const lat = parseFloat(f.Lat);
+        const lng = parseFloat(f.Lng);
+        bounds.push([lat, lng]);
+
+        const marker = L.marker([lat, lng]).addTo(leafletMap);
+        marker.bindPopup(`
+          <div style="font-family:sans-serif;min-width:160px">
+            <strong>${f.Kaust || '—'}</strong><br>
+            <span style="color:#888;font-size:12px">${f.Kategooria || '—'}</span><br>
+            <span style="font-size:11px;color:#aaa">${f.Title || ''}</span><br>
+            <a href="https://maps.google.com/?q=${lat},${lng}" target="_blank" style="font-size:12px">📍 Google Maps</a>
+          </div>
+        `);
+      });
+
+      if (bounds.length) leafletMap.fitBounds(bounds, { padding: [30, 30] });
+
+    } catch(e) {
+      document.getElementById('map-loading').textContent = 'Viga: ' + e.message;
+    }
+  }, 100);
+}
+
+function closeMap() {
+  document.getElementById('map-modal').style.display = 'none';
+  if (leafletMap) leafletMap.invalidateSize();
 }
 
 // ─── STATUS ───
